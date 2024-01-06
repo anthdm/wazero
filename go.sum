@@ -1,0 +1,6 @@
+github.com/stealthrocket/wasi-go v0.8.0 h1:Hwnv3CUoMhhRyero9vt1vfwaYa9tu/Z5kmCW4WeAmVI=
+github.com/stealthrocket/wasi-go v0.8.0/go.mod h1:PJ5oVs2E1ciOJnsTnav4nvTtEcJ4D1jUZAewS9pzuZg=
+github.com/stealthrocket/wazergo v0.19.1 h1:BPrITETPgSFwiytwmToO0MbUC/+RGC39JScz1JmmG6c=
+github.com/stealthrocket/wazergo v0.19.1/go.mod h1:riI0hxw4ndZA5e6z7PesHg2BtTftcZaMxRcoiGGipTs=
+golang.org/x/sys v0.16.0 h1:xWw16ngr6ZMtmxDyKyIgsE93KNKz5HKmMa3b8ALHidU=
+golang.org/x/sys v0.16.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=

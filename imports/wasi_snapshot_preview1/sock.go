@@ -2,7 +2,11 @@ package wasi_snapshot_preview1
 
 import (
 	"context"
+	"fmt"
+	"log"
+	"syscall"
 
+	"github.com/stealthrocket/wasi-go"
 	"github.com/tetratelabs/wazero/api"
 	"github.com/tetratelabs/wazero/experimental/sys"
 	socketapi "github.com/tetratelabs/wazero/internal/sock"
@@ -10,6 +14,144 @@ import (
 	"github.com/tetratelabs/wazero/internal/wasip1"
 	"github.com/tetratelabs/wazero/internal/wasm"
 )
+
+// sockOpen ..
+var sockOpen = newHostFunc(
+	wasip1.SockOpenName,
+	sockOpenFn,
+	[]wasm.ValueType{i32, i32, i32},
+	"family", "sockType", "ptr",
+)
+
+func sockOpenFn(_ context.Context, mod api.Module, params []uint64) (errno sys.Errno) {
+	fmt.Println("OPEN OPEN OPEN")
+	mem := mod.Memory()
+	fsc := mod.(*wasm.ModuleInstance).Sys.FS()
+
+	fmt.Println(params)
+
+	var (
+		family   = params[0]
+		sockType = params[1]
+		offset   = params[2]
+	)
+
+	var sockFD int32
+	sockFD, errno = fsc.SockOpen(wasi.ProtocolFamily(family), wasi.SocketType(sockType), wasi.IPProtocol)
+	if errno != 0 {
+		panic("help")
+		return sys.EBADF
+	}
+
+	fmt.Println("the FD", sockFD)
+
+	if ok := mem.WriteUint32Le(uint32(offset), uint32(4)); !ok {
+		panic("no ok write uint32")
+	}
+
+	return
+}
+
+// sockConnect
+var sockConnect = newHostFunc(
+	wasip1.SockConnectName,
+	sockConnectFn,
+	[]wasm.ValueType{i32, i32, i32},
+	"fd", "address", "port",
+)
+
+func sockConnectFn(_ context.Context, mod api.Module, params []uint64) (errno sys.Errno) {
+	fmt.Println("start connect")
+	fd := uint32(params[0])
+	// Bind it to an address
+	addr := syscall.SockaddrInet4{
+		Port: 8080,
+		Addr: [4]byte{127, 0, 0, 1},
+	}
+
+	if err := syscall.Bind(int(fd), &addr); err != nil {
+		log.Fatal(err)
+	}
+	return
+}
+
+// sockGetOpt
+var sockGetOpt = newHostFunc(
+	wasip1.SockGetOptName,
+	sockGetOptFn,
+	[]wasm.ValueType{i32, i32, i32, i32, i32},
+	"?", "?", "?", "a", "d",
+)
+
+func sockGetOptFn(_ context.Context, mod api.Module, params []uint64) (errno sys.Errno) {
+	fmt.Println("start get opts")
+	return
+}
+
+// sockSetOpt
+var sockSetOpt = newHostFunc(
+	wasip1.SockSetOptName,
+	sockSetOptFn,
+	[]wasm.ValueType{i32, i32, i32, i32, i32},
+	"?", "?", "?", "a", "d",
+)
+
+func sockSetOptFn(_ context.Context, mod api.Module, params []uint64) (errno sys.Errno) {
+	fmt.Println("start set opts")
+	return
+}
+
+// sockGetLocalAddr
+var sockGetLocalAddr = newHostFunc(
+	wasip1.SockGetLocalAddrName,
+	sockGetLocalAddrFn,
+	[]wasm.ValueType{i32, i32, i32},
+	"?", "?", "?",
+)
+
+func sockGetLocalAddrFn(_ context.Context, mod api.Module, params []uint64) (errno sys.Errno) {
+	fmt.Println("start get local addrs")
+	return
+}
+
+// sockGetPeerAddr
+var sockGetPeerAddr = newHostFunc(
+	wasip1.SockGetPeerAddrName,
+	sockGetPeerAddrFn,
+	[]wasm.ValueType{i32, i32, i32},
+	"?", "?", "?",
+)
+
+func sockGetPeerAddrFn(_ context.Context, mod api.Module, params []uint64) (errno sys.Errno) {
+	fmt.Println("start get peer addrs")
+	return
+}
+
+// sockRecvFrom
+var sockRecvFrom = newHostFunc(
+	wasip1.SockRecvFromName,
+	sockRecvFromFn,
+	[]wasm.ValueType{i32, i32, i32, i32, i32, i32, i32, i32},
+	"?", "?", "?", "?", "?", "?", "?", "?",
+)
+
+func sockRecvFromFn(_ context.Context, mod api.Module, params []uint64) (errno sys.Errno) {
+	fmt.Println("start recv from")
+	return
+}
+
+// sockSendTo
+var sockSendTo = newHostFunc(
+	wasip1.SockSendToName,
+	sockSendToFn,
+	[]wasm.ValueType{i32, i32, i32, i32, i32, i32, i32},
+	"?", "?", "?", "?", "?", "?", "?",
+)
+
+func sockSendToFn(_ context.Context, mod api.Module, params []uint64) (errno sys.Errno) {
+	fmt.Println("start send to")
+	return
+}
 
 // sockAccept is the WASI function named SockAcceptName which accepts a new
 // incoming connection.
@@ -24,6 +166,7 @@ var sockAccept = newHostFunc(
 )
 
 func sockAcceptFn(_ context.Context, mod api.Module, params []uint64) (errno sys.Errno) {
+	fmt.Println("accept")
 	mem := mod.Memory()
 	fsc := mod.(*wasm.ModuleInstance).Sys.FS()
 

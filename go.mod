@@ -11,3 +11,10 @@ retract (
 	v1.0.0-beta.2
 	v1.0.0-beta.1
 )
+
+require (
+	github.com/stealthrocket/wasi-go v0.8.0
+	golang.org/x/sys v0.16.0
+)
+
+require github.com/stealthrocket/wazergo v0.19.1 // indirect

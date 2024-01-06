@@ -1,6 +1,7 @@
 package sysfs
 
 import (
+	"fmt"
 	"net"
 	"os"
 
@@ -9,6 +10,38 @@ import (
 	socketapi "github.com/tetratelabs/wazero/internal/sock"
 	"github.com/tetratelabs/wazero/sys"
 )
+
+type sockFile struct {
+	baseSockFile
+
+	fd         int32
+	isNonBlock bool
+}
+
+func NewSockFile(fd int32) socketapi.TCPSock {
+	return &sockFile{
+		fd: fd,
+	}
+}
+
+func (sock *sockFile) Accept() (socketapi.TCPConn, experimentalsys.Errno) {
+	return nil, 0
+}
+
+func (sock *sockFile) Close() experimentalsys.Errno { return 0 }
+
+func (sock *sockFile) IsNonBlock() bool {
+	return sock.isNonBlock
+}
+
+func (sock *sockFile) SetNonBlock(enable bool) {
+	sock.isNonBlock = enable
+}
+
+func (sock *sockFile) Poll(flag fsapi.Pflag, timeoutms int32) (bool, experimentalsys.Errno) {
+	fmt.Println("plling")
+	return false, 0
+}
 
 // NewTCPListenerFile creates a socketapi.TCPSock for a given *net.TCPListener.
 func NewTCPListenerFile(tl *net.TCPListener) socketapi.TCPSock {

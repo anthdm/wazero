@@ -1,16 +1,80 @@
 package sys
 
 import (
+	"fmt"
 	"io"
 	"io/fs"
 	"net"
+	"syscall"
 
+	"github.com/stealthrocket/wasi-go"
 	"github.com/tetratelabs/wazero/experimental/sys"
 	"github.com/tetratelabs/wazero/internal/descriptor"
 	"github.com/tetratelabs/wazero/internal/fsapi"
 	socketapi "github.com/tetratelabs/wazero/internal/sock"
 	"github.com/tetratelabs/wazero/internal/sysfs"
+	"golang.org/x/sys/unix"
 )
+
+// FileType is the type of a file descriptor or file.
+type FileType uint8
+
+const (
+	// UnknownType indicates that the type of the file descriptor or file is
+	// unknown or is different from any of the other types specified.
+	UnknownType FileType = iota
+
+	// BlockDeviceType is indicates that the file descriptor or file refers to
+	// a block device inode.
+	BlockDeviceType
+
+	// CharacterDeviceType indicates that the file descriptor or file refers to
+	// a character device inode.
+	CharacterDeviceType
+
+	// DirectoryType indicates that the file descriptor or file refers to a
+	// directory inode.
+	DirectoryType
+
+	// RegularFileType indicates that the file descriptor or file refers to a
+	// regular file inode.
+	RegularFileType
+
+	// SocketDGramType indicates that the file descriptor or file refers to a
+	// datagram socket.
+	SocketDGramType
+
+	// SocketStreamType indicates that the file descriptor or file refers to a
+	// byte-stream socket.
+	SocketStreamType
+
+	// SymbolicLinkType indicates that the file refers to a symbolic link
+	// inode.
+	SymbolicLinkType
+)
+
+func (f FileType) String() string {
+	switch f {
+	case UnknownType:
+		return "UnknownType"
+	case BlockDeviceType:
+		return "BlockDeviceType"
+	case CharacterDeviceType:
+		return "CharacterDeviceType"
+	case DirectoryType:
+		return "DirectoryType"
+	case RegularFileType:
+		return "RegularFileType"
+	case SocketDGramType:
+		return "SocketDGramType"
+	case SocketStreamType:
+		return "SocketStreamType"
+	case SymbolicLinkType:
+		return "SymbolicLinkType"
+	default:
+		return fmt.Sprintf("FileType(%d)", f)
+	}
+}
 
 const (
 	FdStdin int32 = iota
@@ -330,9 +394,112 @@ func (c *FSContext) Renumber(from, to int32) sys.Errno {
 	return 0
 }
 
+// This function is used to automtically retry syscalls when they return EINTR
+// due to having handled a signal instead of executing. Despite defininig a
+// EINTR constant and having proc_raise to trigger signals from the guest, WASI
+// does not provide any mechanism for handling signals so masking those errors
+// seems like a safer approach to ensure that guest applications will work the
+// same regardless of the compiler being used.
+func ignoreEINTR(f func() error) error {
+	for {
+		if err := f(); err != unix.EINTR {
+			return err
+		}
+	}
+}
+
+func ignoreEINTR2[F func() (R, error), R any](f F) (R, error) {
+	for {
+		v, err := f()
+		if err != unix.EINTR {
+			return v, err
+		}
+	}
+}
+
+func (c *FSContext) SockOpen(family wasi.ProtocolFamily, sockType wasi.SocketType, protocol wasi.Protocol) (int32, sys.Errno) {
+	var sysDomain int
+	switch family {
+	case wasi.InetFamily:
+		sysDomain = unix.AF_INET
+	case wasi.Inet6Family:
+		sysDomain = unix.AF_INET6
+	case wasi.UnixFamily:
+		sysDomain = unix.AF_UNIX
+	default:
+		panic("err")
+		return -1, sys.EINVAL
+	}
+
+	if sockType == wasi.AnySocket {
+		switch protocol {
+		case wasi.TCPProtocol:
+			sockType = wasi.StreamSocket
+		case wasi.UDPProtocol:
+			sockType = wasi.DatagramSocket
+		}
+	}
+
+	var fdType wasi.FileType
+	_ = fdType
+	var sysType int
+	switch sockType {
+	case wasi.DatagramSocket:
+		sysType = unix.SOCK_DGRAM
+		fdType = wasi.SocketDGramType
+	case wasi.StreamSocket:
+		sysType = unix.SOCK_STREAM
+		fdType = wasi.SocketStreamType
+	default:
+		panic("err")
+		return -1, sys.EINVAL
+	}
+
+	var sysProtocol int
+	switch protocol {
+	case wasi.IPProtocol:
+		sysProtocol = unix.IPPROTO_IP
+	case wasi.TCPProtocol:
+		sysProtocol = unix.IPPROTO_TCP
+	case wasi.UDPProtocol:
+		sysProtocol = unix.IPPROTO_UDP
+	default:
+		panic("err")
+		return -1, sys.EINVAL
+	}
+
+	//fd, err := ignoreEINTR2(func() (int, error) {
+	// return unix.Socket(sysDomain, sysType, sysProtocol)
+	fd, err := syscall.Socket(sysDomain, sysType, sysProtocol)
+	// })
+	if err != nil {
+		panic(err)
+		// Darwin gives EPROTOTYPE when the socket type and protocol do
+		// not match, which differs from the Linux behavior which returns
+		// EPROTONOSUPPORT. Since there is no real use case for dealing
+		// with the error differently, and valid applications will not
+		// invoke SockOpen with invalid parameters, we align on the Linux
+		// behavior for simplicity.
+		if err == unix.EPROTOTYPE {
+			err = unix.EPROTONOSUPPORT
+		}
+		return -1, sys.EINVAL
+	}
+
+	fmt.Println("Syscall fd", fd)
+
+	entry := &FileEntry{Name: fmt.Sprintf("%d", fd), IsPreopen: false, File: fsapi.Adapt(sysfs.NewSockFile(int32(fd)))}
+	guestFD, ok := c.openedFiles.Insert(entry)
+	if !ok {
+		panic("not ok")
+	}
+	return guestFD, 0
+}
+
 // SockAccept accepts a sock.TCPConn into the file table and returns its file
 // descriptor.
 func (c *FSContext) SockAccept(sockFD int32, nonblock bool) (int32, sys.Errno) {
+	fmt.Println("accepting.....")
 	var sock socketapi.TCPSock
 	if e, ok := c.LookupFile(sockFD); !ok || !e.IsPreopen {
 		return 0, sys.EBADF // Not a preopen
